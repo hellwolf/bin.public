@@ -1,0 +1,26 @@
+#!/usr/bin/env kermit +
+
+define usage_and_exit {
+	echo "Usage: \%0 device baudrate"
+	exit
+}
+
+if not defined \%1 usage_and_exit
+if not defined \%2 usage_and_exit
+
+echo "Using device: \%1"
+echo "Baudrate: \%2"
+
+set line \%1
+set modem type none
+set speed \%2
+set carrier-watch off
+set handshake none
+set flow-control none
+robust
+#set file type bin
+#set file name lit
+#set rec pack 1000
+#set send pack 1000
+#set window 5
+connect

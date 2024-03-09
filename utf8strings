@@ -1,0 +1,62 @@
+#!/usr/bin/env perl
+# Synopsis: Search UTF-8 strings from the input.
+
+use strict;
+use utf8;
+binmode STDIN; #only for windows compability
+
+my $buflen=8192;
+my $bufcount=0;
+my $buf;
+my @bytebuf;
+my $type=0;
+my $type_read=0;
+my @type_buf;
+my $neednewline=0;
+
+while(1){
+	my $readlen = read(STDIN,$buf,$buflen,$buflen*$bufcount++);
+	@bytebuf = unpack("C*",$buf);
+	$readlen == 0 && last;
+	while($readlen--){
+		my $C = $bytebuf[-$readlen-1];
+		if($type == 0){
+		 	                            ##0xxx_xxxx type 1
+			unless(($C & 0b1000_0000) ^ 0b0000_0000){
+				if($C >= 0x20 && $C < 0x80){
+					print pack("C",$C);
+					next;
+				}else{
+					$neednewline == 1 && print "\n";
+					$neednewline = 0;
+				}
+			}
+			                                    ##110x_xxxx type 2
+			$type=2 unless(($C & 0b1110_0000) ^ 0b1100_0000);
+		                                        ##1110_xxxx type 3
+			$type=3 unless(($C & 0b1111_0000) ^ 0b1110_0000);
+		                                        ##1111_0xxx type 4
+			$type=4 unless(($C & 0b1111_1000) ^ 0b1111_0000);
+			if($type != 0){
+				$type_buf[$type_read++] = $C;
+				$neednewline=1;
+			}else{
+				$neednewline == 1 && print "\n";
+				$neednewline = 0;
+			}
+		}else{
+			if(($C & 0b1100_0000) ^ 0b1000_0000){
+				$neednewline == 1 && print "\n";
+				$neednewline = 0;
+				$type = $type_read = 0;
+				next;
+			}
+			$type_buf[$type_read++] = $C;
+			if($type_read == $type){
+				print pack("C".$type,@type_buf);
+				$type = $type_read = 0;
+			}
+		}
+	}
+};
+

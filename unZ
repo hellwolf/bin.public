@@ -1,0 +1,8 @@
+#!/usr/bin/env perl
+
+use Compress::Zlib;
+
+undef $/;
+my $d = uncompress(<>);
+die "Stream error\n" unless defined $d;
+print $d;

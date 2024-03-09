@@ -1,0 +1,4 @@
+#!/usr/bin/env perl
+use Compress::Zlib;
+undef $/;
+print compress(<>);

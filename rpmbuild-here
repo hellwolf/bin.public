@@ -1,0 +1,14 @@
+#!/usr/bin/env sh
+
+function oops() {
+    echo "$@" >&2
+    exit 1
+}
+
+[ "$#" -lt 1 ] && oops Usage: rpmbuild-here specfile args...
+
+SPECFILE=$1
+shift
+TOPDIR=$(dirname "$(readlink -f "$SPECFILE")")
+
+rpmbuild --define="_topdir $TOPDIR" "$SPECFILE"  "$@"

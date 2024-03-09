@@ -1,0 +1,19 @@
+#!/usr/bin/env dync++23
+#include <stdio.h>
+
+/* show data type size of the machine */
+int main(void){
+	printf(
+	"char short int long ptr long-long float double\n"
+	"%3d   %3d  %3d  %3d %3d  %3d       %3d   %3d\n",
+	sizeof(char),
+	sizeof(short),
+	sizeof(int),
+	sizeof(long),
+	sizeof(void*),
+	sizeof(long long),
+	sizeof(float),
+	sizeof(double));
+	return 0;
+}
+

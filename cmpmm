@@ -1,0 +1,38 @@
+#!/usr/bin/env perl
+use strict;
+use warnings;
+use Fcntl;
+
+die "Not enough args\n" unless @ARGV == 5;
+my ($fa, $fb, $ss, $from, $to)= @ARGV;
+my $l;
+if($ss eq 'C'){
+    $l = 1;
+}elsif($ss eq 'S'){
+    $l = 2;
+}elsif($ss eq 'I'){
+    $l = 4;
+}else{
+    die "Unknown size selector $ss\n";
+}
+$from = pack($ss, $from);
+$to = pack($ss, $to);
+
+sysopen(FA, $fa, O_RDONLY) or die "Open $fa failed : $!";
+sysopen(FB, $fb, O_RDONLY) or die "Open $fb failed : $!";
+
+my $d1;
+my $d2;
+my $idx = 0;
+while(sysread(FA, $d1, $l)){
+    die "$fa EOF unexpectly : $!" unless sysread(FB, $d2, $l);
+    # print unpack($ss, $d1),"\t", unpack($ss, $d2),"\n";
+    printf "0x%08x\n",$idx if $d1 eq $from && $d2 eq $to;
+    ++$idx;
+    sysseek(FA, $idx, 0);
+    sysseek(FB, $idx, 0);
+}
+
+close FA;
+close FB;
+

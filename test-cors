@@ -1,0 +1,17 @@
+#!/bin/sh
+
+if [ -z "$1" ]; then echo "Error: No origin was provided"; exit 1; fi
+if [ -z "$2" ]; then echo "Error: No URL to test was provided"; exit 1; fi
+if [ "$3" ]; then METHOD="$3"; else METHOD=GET; fi
+
+for m in GET HEAD OPTIONS; do
+    echo "METHOD: $m"
+    curl -I -X $m \
+        -s \
+        -H "Origin: $1" \
+        -H "Access-Control-Request-Method: $m" \
+        "$2"  \
+        2>&1 | \
+        grep --ignore-case --color=never 'Access-Control'
+done
+

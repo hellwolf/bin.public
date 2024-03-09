@@ -1,0 +1,60 @@
+#!/usr/bin/env dync++
+
+#include <stdlib.h>
+#include <stdio.h>
+
+static int bitlen(unsigned int d) {
+    int i = 0;
+
+    while (d) {
+        d >>= 1;
+        ++i;
+    }
+
+    return i;
+}
+
+static void mydiv(unsigned int dividend,
+                  unsigned int divisor,
+                  unsigned int *pquotient,
+                  unsigned int *premainder) {
+    int i;
+    unsigned int q;
+
+    if (divisor == 0) {
+        fprintf(stderr, "mydiv: divided by zero\n");
+        abort();
+    }
+
+    *pquotient = 0;
+    *premainder = dividend;
+    i = bitlen(dividend) - bitlen(divisor);
+    while (*premainder >= divisor) {
+        q = divisor << i;
+        if (*premainder >= q) {
+            *pquotient |= (1 << i);
+            *premainder -= q;
+        }
+        --i;
+    }
+}
+
+static void pdiv(unsigned int a, unsigned int b) {
+    unsigned int quotient;
+    unsigned int remaider;
+
+    mydiv(a, b, &quotient, &remaider);
+    printf("%u / %u = %u, %u\n", a, b, quotient, remaider);
+}
+
+int main(int argc, char *argv[]) {
+    if (argc != 3) {
+        fprintf(stderr, "Usage: div divident divisor\n");
+        return -1;
+    }
+
+    pdiv(atoi(argv[1]), atoi(argv[2]));
+
+    return 0;
+}
+

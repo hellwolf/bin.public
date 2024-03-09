@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Synopsis: Combine any input videos to a mp4 file.
+# Usage: ffmpeg-combine-videos input_video1 input input_video2 ...
+
+FFMPEG_ARGS=()
+n=0
+
+rm -f __input*
+> __input.list
+
+for i in "$@";do
+    I=__input${n}.ts
+    ffmpeg -i "$i" -c:v h264 -b:v ${VIDEO_BITRATE:-400k} -c:a libmp3lame -f mpegts "$I"
+    #FFMPEG_ARGS+=(-i "$I")
+    echo "file $I" >> __input.list
+    n=$((n+1))
+done
+
+FFMPEG_ARGS+=(
+    -f concat -safe 0 -i __input.list
+    -c copy combined.mp4
+)
+
+set ffmpeg "${FFMPEG_ARGS[@]}"
+# debugging:
+# echo FFMPEG ARGS:
+# for i in "$@";do echo $i;done
+# echo INPUT LIST:
+# cat __input.list
+"$@"
+
+rm -f __input*

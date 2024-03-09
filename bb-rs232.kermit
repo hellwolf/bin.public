@@ -1,0 +1,40 @@
+#!/usr/bin/env kermit +
+# Summary : Beagle Board RS232 connect script using kerbang language
+# Author  : Zhicheng Miao <mzhicheng@criticalsoftware.com>
+# Description :
+# http://code.google.com/p/beagleboard/wiki/BeagleBootHwSetup
+
+# Parameter check
+define usage_and_exit {
+	echo "Usage: \%0 device"
+	exit
+}
+if not defined \%1 usage_and_exit
+
+# Device select
+echo "Using device: \%1"
+set line \%1
+
+# Configurations
+# - null modem cable
+set modem type none
+# - 115200 bps
+set speed 115200
+# - 8 data bits
+set terminal bytesize 8
+# - 1 stop bit
+set stop-bits 1
+# - parity none
+set parity none
+# - no flow control
+set flow-control none
+# - no line feed on carriage return
+set carrier-watch off
+# - local echo off
+set terminal echo off
+# - ANSI character encoding
+# No Action for this
+
+# Connect
+echo "Connencting..."
+connect

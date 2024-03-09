@@ -1,0 +1,30 @@
+#!/bin/sh
+# @summary : myhop, a log tool for line oriented protocal
+# @author : ZC Miao <hellwolf.misty@gmail.com>
+# @usage : listen_port desthost destport nc_args
+
+T=$(date +%s)
+I=/tmp/myhop_I${T}
+O=/tmp/myhop_O${T}
+
+clear_output_exit(){
+	rm -f $I $O
+}
+
+trap clear_output_exit INT QUIT HUP
+
+mknod $I p
+mknod $O p
+
+LP=$1
+DH=$2
+DP=$3
+
+shift 3
+
+nc "$@" -l "$LP" < $O | tee $I | sed s/^/■/ &
+nc "$@" "$DH" "$DP" < $I | tee $O | sed s/^/□/
+
+kill %1
+
+clear_output_exit

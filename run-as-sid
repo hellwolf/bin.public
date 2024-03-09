@@ -1,0 +1,18 @@
+#!/usr/bin/env perl
+
+use Cwd;
+
+die "usage : uid gid prog args...\n" if @ARGV < 3;
+
+$uid = shift @ARGV;
+$gid = shift @ARGV;
+$) = "$gid $gid";
+$> = $uid;
+# $prog = shift @ARGV;
+# $prog = `which $prog`;
+# chomp $prog;
+
+# @c = ('sudo', 'start-stop-daemon', '--chuid', "$uid:$gid", '--start',
+#       '--chdir', getcwd(),
+#       '--exec', $prog, '--', @ARGV);
+exec @ARGV;

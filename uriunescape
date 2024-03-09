@@ -1,0 +1,5 @@
+#!/usr/bin/env nix-shell
+#!nix-shell -i perl -p perl perl.pkgs.AnyURIEscape
+use URI::Escape;
+my $cmdline = join(' ', @ARGV);
+print uri_unescape($cmdline);

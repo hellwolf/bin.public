@@ -1,0 +1,466 @@
+#!/usr/bin/env nix-shell
+#!nix-shell -i perl -p perl perl.pkgs.DBI
+use strict;
+use warnings;
+
+use Getopt::Long;
+use DBI;
+
+# options
+my $rpmroot;
+my $popdb;
+
+# global variables
+my $dbh;
+my @lastrpmlist;
+
+sub populate_db {
+    my $rpmopt = '';
+    $rpmopt .= "-r $rpmroot" if $rpmroot;
+
+    print "Creating tables...";$| = 1;
+    $dbh->do(q{DROP TABLE IF EXISTS rpmsurvive});
+    $dbh->do(q{CREATE TABLE rpmsurvive (
+    name text NOT NULL,
+    survived boolean NOT NULL,
+    dep_count integer NOT NULL,
+    dc_count integer NOT NULL,
+    dt_count integer NOT NULL
+)});
+    $dbh->do(q{DROP TABLE IF EXISTS rpmdeps});
+    $dbh->do(q{CREATE TABLE rpmdeps (
+    name text NOT NULL,
+    dep text NOT NULL
+)});
+    print "Done.\n";
+
+    print "Get rpm list...";$| = 1;
+    my @rpms = `rpm $rpmopt -qa --qf '%{name}\n' | sort | uniq`;
+    $_ =~ s/\s*$//g for @rpms;
+    print "Done.\n";
+
+    print "Populating dependents table...\n";
+    my $i = 0;
+    my %depcapcache;
+    my (%dc_map, %dt_map);
+    for my $rpm (@rpms) {
+        print $i++, ": ", $rpm;
+        $| = 1;
+
+        my @depcaps = `rpm $rpmopt -q --requires $rpm`;
+        my %deprpms;
+
+        for my $depcap (@depcaps) {
+            # remove version requirements
+            $depcap =~ s/\s+.*$//g;
+            my $caprpms;
+            if (exists $depcapcache{$depcap}) {
+                $caprpms = $depcapcache{$depcap};
+            } else {
+                @$caprpms = `rpm $rpmopt -q --qf '%{name}\n' --whatprovides "$depcap" 2>/dev/null`;
+                if ($?) {
+                    undef $caprpms;
+                } else {
+                    chomp $_ for @$caprpms;
+                }
+                $depcapcache{$depcap} = $caprpms;
+            }
+            if (defined $caprpms) {
+                $deprpms{$_} = 1 for @$caprpms;
+            }
+        }
+
+        for my $deprpm (keys %deprpms) {
+            $dbh->do ("INSERT INTO rpmdeps (name, dep) VALUES ('$rpm', '$deprpm')");
+            $dc_map{$deprpm} = [] unless exists $dc_map{$deprpm};
+            push @{$dc_map{$deprpm}}, $rpm;
+        }
+        $dt_map{$rpm} = [keys %deprpms] if keys %deprpms;
+
+        print map {"\b \b"} 0..80;
+        $| = 1;
+    }
+    print "Done\n";
+
+    print "Calculating dependencies and dependents count...\n";
+    $i = 0;
+    for my $rpm (@rpms) {
+        print $i++, ": ", $rpm;
+        $| = 1;
+        my $dep_count = @{$dt_map{$rpm}||[]};
+        my ($dc_count, $dt_count);
+
+        # calc dc(dependencies) and dt(dependents) count
+        for ([\%dc_map, \$dc_count], [\%dt_map, \$dt_count]) {
+            my ($map, $rcount) = @$_;
+            my @stack = ([$rpm]);
+            my %set;
+
+            # depth first search for all nodes
+            queue_of_same_level: while (@stack) {
+                my $queue = $stack[$#stack];
+                if (@$queue) {
+                    my $node = shift @$queue;
+                    # already searched, prune current branch
+                    next queue_of_same_level if exists $set{$node};
+                    # add to the set
+                    $set{$node} = undef;
+                    # next level
+                    if (exists $map->{$node}) {
+                        # copy nodes
+                        push @stack, [@{$map->{$node}}];
+                    }
+                } else {
+                    # finish this level
+                    pop @stack;
+                }
+            }
+
+            $$rcount = scalar(keys %set);
+        }
+
+        $dbh->do ("INSERT INTO rpmsurvive (name, survived, dep_count, dc_count, dt_count) VALUES ('$rpm', 'false', $dep_count, $dc_count, $dt_count)");
+
+        print map {"\b \b"} 0..80;
+        $| = 1;
+    }
+    print "Done\n";
+}
+
+sub checktable {
+    if ($popdb) {
+        populate_db;
+    } else {
+        my @row = $dbh->selectrow_array(q{
+SELECT COUNT(*)
+    FROM sqlite_master
+    WHERE type = 'table' AND name='rpmsurvive'
+});
+        populate_db $dbh unless $row[0];
+    }
+}
+
+sub info {
+    my ($subcmd) = @_;
+    my @row;
+
+    # show number of package
+    @row = $dbh->selectrow_array(qq{
+SELECT COUNT(*) FROM rpmsurvive
+});
+    print "Number of packages: $row[0]\n";
+
+    # show number of survived package
+    @row = $dbh->selectrow_array(qq{
+SELECT COUNT(*) FROM rpmsurvive WHERE survived = 'true'
+});
+    print "Number of survived packages: $row[0]\n";
+
+    # show number of relations
+    @row = $dbh->selectrow_array(qq{
+SELECT COUNT(*) FROM rpmdeps
+});
+    print "Number of relations: $row[0]\n";
+
+    # show dependencies count statistics
+    @row = $dbh->selectrow_array(qq{
+SELECT max(dc_count), avg(dc_count) FROM rpmsurvive
+});
+    print "Package dependencies: max=$row[0], avg=$row[1]\n";
+
+    # show dependents statisticts
+    @row = $dbh->selectrow_array(qq{
+SELECT max(dt_count), avg(dt_count) FROM rpmsurvive
+});
+    print "Package dependents: max=$row[0], avg=$row[1]\n";
+}
+
+sub show_pkgs {
+    my ($row) = @_;
+
+    $#lastrpmlist = -1;
+    for my $i (0..@$row-1) {
+        print $i, ": ", $row->[$i][0],
+        ", deps ", $row->[$i][1],
+        ", dependencies ", $row->[$i][2],
+        ", dependents ", $row->[$i][3],
+        "\n";
+        $lastrpmlist[$i] = $row->[$i][0];
+    }
+}
+
+sub list_package {
+    my ($subcmd, $limit) = @_;
+    my $preorder = '';
+
+    $limit = 10 unless defined $limit;
+    $subcmd = 't' unless defined $subcmd;
+
+    if ($subcmd eq 'c') {
+        $preorder = 'dc_count DESC,';
+    } elsif ($subcmd eq 't') {
+        $preorder = 'dt_count DESC,';
+    }
+
+    my $row = $dbh->selectall_arrayref(qq{
+SELECT name, dep_count, dc_count, dt_count
+    FROM rpmsurvive
+    WHERE survived = 'false'
+    ORDER BY $preorder random()
+    LIMIT $limit
+});
+
+    show_pkgs $row;
+}
+
+sub search {
+    my ($pattern) = @_;
+
+    die "pattern should only be word characters\n" unless $pattern =~ m/^\w+$/;
+    my $row = $dbh->selectall_arrayref(qq{
+SELECT name, dep_count, dc_count, dt_count
+    FROM rpmsurvive
+    WHERE name LIKE '\%$pattern\%'
+});
+
+    show_pkgs $row;
+}
+
+sub p2rpm {
+    my ($p) = @_;
+    my $rpm;
+
+    die "package not specified\n" unless defined $p;
+
+    # p is number
+    if ($p =~ m/^\d+$/) {
+        if ($p < @lastrpmlist) {
+            $rpm = $lastrpmlist[$p];
+        } else {
+            die "Package index $p out of range\n";
+        }
+    } else {
+        $rpm = $p
+    }
+
+    # check if rpm exists
+    my @row = $dbh->selectrow_array(qq{
+SELECT COUNT(*) FROM rpmsurvive WHERE name = '$rpm'
+});
+    die "$rpm doesn't exist\n" unless $row[0];
+
+    return $rpm;
+}
+
+sub get_survival_chain {
+    my ($rpm) = @_;
+    my @rpms = ($rpm);
+    my @rpmssurvived = (($dbh->selectrow_array(qq{
+SELECT survived FROM rpmsurvive WHERE name = '$rpm'
+}))[0]);
+    my %chain;
+
+    while (@rpms) {
+        my $rpm = shift @rpms;
+        my $rpmsurvived = shift @rpmssurvived;
+
+        next if exists $chain{$rpm};
+
+        my $row = $dbh->selectall_arrayref(qq{
+SELECT rpmsurvive.name, rpmsurvive.survived
+    FROM rpmdeps
+    INNER JOIN rpmsurvive ON rpmdeps.dep = rpmsurvive.name
+    WHERE rpmdeps.name = '$rpm'
+});
+
+        for my $dep (@$row) {
+            my ($deprpm, $depsurvive) = @$dep;
+            unless (exists $chain{$deprpm}) {
+                push @rpms, $deprpm;
+                push @rpmssurvived, $depsurvive;
+            }
+        }
+
+        $chain{$rpm} = $rpmsurvived;
+    }
+
+    return \%chain;
+}
+
+sub pkg_info {
+    my ($p, $subcmd) = @_;
+
+    my $rpm = p2rpm $p;
+
+    # number of dependents
+    if ((!defined $subcmd) || ($subcmd eq 'nt')) {
+        my @row = $dbh->selectrow_array(qq{
+SELECT COUNT(*) FROM rpmdeps WHERE name = '$rpm'
+});
+        print "number of dependents of $rpm: $row[0]\n";
+    }
+
+    # list dependents
+    if ((defined $subcmd) && ($subcmd eq 't')) {
+        my $row = $dbh->selectall_arrayref(qq{
+SELECT dep FROM rpmdeps WHERE name = '$rpm'
+});
+        print "dependents of $rpm:\n";
+        print $_->[0],"\n" for @$row;
+    }
+
+    # number of dependencies
+    if ((!defined $subcmd) || ($subcmd eq 'nc')) {
+        my @row = $dbh->selectrow_array(qq{
+SELECT COUNT(*) FROM rpmdeps WHERE dep = '$rpm'
+});
+        print "number of dependencies of $rpm: $row[0]\n";
+    }
+
+    # list dependencies
+    if ((defined $subcmd) && ($subcmd eq 'c')) {
+        my $row = $dbh->selectall_arrayref(qq{
+SELECT name FROM rpmdeps WHERE dep = '$rpm'
+});
+        print "dependencies of $rpm:\n";
+        print $_->[0],"\n" for @$row;
+    }
+
+    # count survival chain
+    if ((defined $subcmd) && ($subcmd eq 'ns')) {
+        my $chain = get_survival_chain($rpm);
+        my $survived = scalar(grep {$_ eq 'true'} values %$chain);
+        print "number of nodes in survival chain: ", scalar(keys %$chain),
+        ", ", scalar($survived), " of them already survived.\n";
+    }
+
+    # list survival chain
+    if ((defined $subcmd) && ($subcmd eq 's')) {
+        my $chain = get_survival_chain($rpm);
+        print "survival chain:\n", join("\n", map {$_.(($chain->{$_} eq 'true')?' (survived)':'')} keys %$chain), "\n";
+    }
+}
+
+sub survival_pkg {
+    my ($p) = @_;
+
+    my $rpm = p2rpm $p;
+
+    my $chain = get_survival_chain($rpm);
+    my $survived = scalar(grep {$_ eq 'true'} values %$chain);
+    print scalar(keys %$chain), " packages will survival along with \"$rpm\", $survived of them already survived, are you sure(y/N)?";
+    my $yesno = <STDIN>;
+    chomp $yesno;
+    if ($yesno eq "y") {
+        $dbh->do (qq{
+UPDATE rpmsurvive SET survived = 'true' WHERE name = '$_'
+}) for keys %$chain;
+        print "Done.\n";
+    } else {
+        print "Give up.\n";
+    }
+}
+
+sub reset_all {
+    print "Reset all survival records, are you sure(y/N)?";
+    my $yesno = <STDIN>;
+    chomp $yesno;
+    if ($yesno eq "y") {
+        $dbh->do (qq{UPDATE rpmsurvive SET survived = 'false'});
+    }
+}
+
+sub prompt {
+    print '>';
+    $| = 1;
+}
+
+sub rpmselection {
+    my ($dbfile) = @_;
+    $dbh = DBI->connect(
+            "dbi:SQLite:dbname=$dbfile",
+            "",
+            "",
+            { RaiseError => 1 },
+            ) or die $DBI::errstr;
+
+    # check table existence
+    checktable();
+
+    # interactive selection
+    prompt;
+    cmdloop: while (<STDIN>) {
+        my ($cmd, @args) = split /\s/;
+        my $quit;
+
+        eval {
+            # default command
+            if (!defined $cmd) {
+                list_package;
+            } elsif ($cmd eq 'h') {
+                print q{rpmselection tool
+Command Line:
+$ rpmselection.pl dbfile
+Run against new dbfile will start collecting rpm dependencies
+information and storing to dbfile. Later on dbfile is persistent
+for further usage.
+
+Commands:
+i                 # general information
+l [cmd] [limit]   # pickup (limit) number of packages
+    t             # sort by dependents
+                  # default command, by pressing enter
+    c             # sort by dependencies
+    r             # randomly pickup
+g pattern         # search package by pattern
+p num or name     # package information
+                  # num from l command, name is rpm name
+    nt(default)   # number of dependents
+    t             # list dependents
+    nc(default)   # number of dependencies
+    c             # list dependencies
+    ns            # number of nodes in survival chain
+    s             # list nodes in survival chain
+s [(num or name)] # let package survive
+                  # num from l command, name is rpm name
+r                 # reset survival records
+q                 # quit
+};
+            } elsif ($cmd eq 'i') {
+                info @args;
+            } elsif ($cmd eq 'l') {
+                list_package @args;
+            } elsif ($cmd eq 'g') {
+                search @args;
+            } elsif ($cmd eq 'p') {
+                pkg_info @args;
+            } elsif ($cmd eq 's') {
+                survival_pkg @args;
+            } elsif ($cmd eq 'r') {
+                reset_all @args;
+            } elsif ($cmd eq 'q') {
+                $quit = 1;
+            } else {
+                print STDERR "Unknown command $cmd\n";
+            }
+        };
+        last cmdloop if $quit;
+
+        if ($@) {
+            print STDERR "Exception: $@";
+        }
+
+        prompt;
+    }
+}
+
+GetOptions (
+"rpmroot=s" => \$rpmroot,
+"popdb" => \$popdb
+) or exit 1;
+if (@ARGV == 1) {
+    rpmselection $ARGV[0];
+} else {
+    print STDERR "Usage: rpmselection.pl dbfile\n";
+}
+

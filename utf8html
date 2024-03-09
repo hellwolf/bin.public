@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# Synopsis: Convert a HTML page to a UTF-8 encoded version in place.
+DELETE_OLD=0
+
+usage () {
+   echo "$(basename $0) [-f] <inputfile>"
+   exit 1
+}
+
+while getopts ":f" opt;
+do
+    case "$opt" in
+      "f")
+         DELETE_OLD=1
+         ;;
+        *)
+         echo "UNKNOWN options" $opt
+         usage
+    esac
+done
+shift $(($OPTIND-1))
+
+test -n "$1" || usage
+
+fname=$1
+
+if [ ! -f "$fname" ];then
+    echo "file \"$1\" not found"
+    exit 1
+fi
+
+fname=$1
+oldenc=$(sed -n 's/.*<meta .*charset=\([A-Za-z0-9_-]*\).*/\n\1\n/Ip' "$fname" | sed -n '2p')
+if [ -z $oldenc ];then
+    echo "unkown encoding,exit!"
+    exit 3
+fi
+ftmp="$1.tmp"
+fsave="$1.old"
+
+piconv -f $oldenc -t UTF-8 "$fname" > "$ftmp"
+if [ "$?" != "0" ];then
+    echo "error detected,exit!"
+    rm $ftmp
+	exit 1
+fi
+
+mv "$fname" "$fsave"
+cat "$ftmp" | sed '{ s/charset=[A-Za-z0-9_-]*/charset=UTF-8/i;}' > "$fname"
+
+rm -f $ftmp
+test "$DELETE_OLD" == "1"  && rm -f $fsave

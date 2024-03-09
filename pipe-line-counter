@@ -1,0 +1,9 @@
+#!/usr/bin/env perl
+use strict;
+use warnings;
+
+while (<STDIN>) {
+    print "\b\b\b\b\b\b\b\b\b\b\b";
+    print $.;
+    $| = 1;
+}

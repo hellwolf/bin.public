@@ -1,0 +1,5 @@
+#!/usr/bin/env perl
+
+use POSIX qw(strftime);
+
+print strftime "%a %b %e %H:%M:%S %Y\n", gmtime($ARGV[0]);

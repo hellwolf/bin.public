@@ -1,0 +1,1 @@
+awk 'BEGIN{srand()}{print rand(),$0}' "$1" | sort -k1n | cut -d" " -f2-

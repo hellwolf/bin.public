@@ -1,0 +1,8 @@
+#!/usr/bin/env perl
+
+# join input lines
+
+while(<STDIN>)  {
+    chomp $_;
+    print STDOUT $_;
+}

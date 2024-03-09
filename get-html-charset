@@ -1,0 +1,10 @@
+#!/bin/sh
+
+ENC=$(sed -n 's/.*<meta .*charset=\([A-Za-z0-9_-]*\).*/\n\1\n/Ip' "$1" | sed -n '2p')
+
+if [ -z "$ENC" ];then
+	echo "UNKNOWN:$(basename "$1")"
+	exit 1
+else
+	echo "$(basename "$1") ENCODING:$ENC"
+fi

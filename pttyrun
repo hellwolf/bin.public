@@ -1,0 +1,24 @@
+#!/usr/bin/env nix-shell
+#!nix-shell -i perl -p perl perl.pkgs.IOPty
+use strict;
+use warnings;
+
+use POSIX;
+use IO::Pty;
+
+my $pty = new IO::Pty;
+my $slave = $pty->slave();
+
+if (fork()) {
+    $pty->close_slave();
+    while (<$pty>) {
+        print $_;
+    }
+} else {
+    $pty->make_slave_controlling_terminal() || die "ptty: $!";
+    close($pty);
+    dup2($slave->fileno, 0) || die "dup2: $!";
+    dup2($slave->fileno, 1) || die "dup2: $!";
+    dup2($slave->fileno, 2) || die "dup2: $!";
+    exec @ARGV;
+}

@@ -1,0 +1,20 @@
+#!/usr/bin/env perl
+use strict;
+use warnings;
+
+exit 1 if @ARGV != 1;
+
+my ($i1, $i2, $i3, $i4) = split /\./, $ARGV[0];
+
+my $m = 0;
+print $_.'.'.$i2.'.'.$i3.'.'.$i4,'/',(($m>>=1)+=128),'.0.0.0',"\n"
+    for map{chomp $_;$_} `enumerate-single-bit-flip $i1`;
+$m = 0;
+print $i1.'.'.$_.'.'.$i3.'.'.$i4,'/255.',(($m>>=1)+=128),'.0.0',"\n"
+    for map{chomp $_;$_} `enumerate-single-bit-flip $i2`;
+$m = 0;
+print $i1.'.'.$i2.'.'.$_.'.'.$i4,'/255.255.',(($m>>=1)+=128),'.0',"\n"
+    for map{chomp $_;$_} `enumerate-single-bit-flip $i3`;
+$m = 0;
+print $i1.'.'.$i2.'.'.$i3.'.'.$_,'/255.255.255.',(($m>>=1)+=128),"\n"
+    for map{chomp $_;$_} `enumerate-single-bit-flip $i4`;

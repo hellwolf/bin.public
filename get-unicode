@@ -1,0 +1,1 @@
+echo -n "$1" | iconv -t ucs2 | od -tx1 | head -n1 |awk '{print $3$2}'

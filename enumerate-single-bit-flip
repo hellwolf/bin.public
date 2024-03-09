@@ -1,0 +1,9 @@
+#!/usr/bin/env perl
+# Synopsis: Enumerate all single-bit flips of a byte.
+use strict;
+use warnings;
+
+exit 1 if @ARGV != 1;
+my $byte = $ARGV[0];
+
+print $byte + (($byte & 1<<$_)?-1:1)*(1<<$_),"\n" for sort {$b<=>$a} 0..7;

@@ -1,0 +1,28 @@
+#!/usr/bin/env perl
+# Synopsis: Make all symlinks in a folder point to relative paths.
+use strict;
+use warnings;
+
+use Cwd qw( realpath );
+use File::Spec::Functions qw( abs2rel rel2abs catfile );
+use File::Basename;
+use File::Find;
+
+for my $basedir ( @ARGV ){
+    die "bad directory : $basedir\n" unless -d $basedir;
+    $basedir = realpath $basedir;
+    find({
+        wanted => sub {
+            my $name = readlink $File::Find::name;
+            if( defined $name && $name =~ m:^/: && -e $name ){
+                $name = realpath $name;
+                my $reldir = abs2rel( $basedir, dirname $File::Find::name );
+                my $relfile = abs2rel( $name, $basedir );
+                unlink $File::Find::name;
+                symlink catfile( $reldir, $relfile ), $File::Find::name
+                    or die "symlink failed : $!\n";
+            }
+        },
+    }, rel2abs $basedir);
+}
+
