@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+# Synopsis: An easier easyrsa wrapper for user management, and openvpn support.
+# Author: Miao ZC <zhicheng.miao@gmail.com>
+
+# In this opinionated version, we put pki under the data folder
+export EASYRSA_PKI=data/pki
+
+CA_CERT_FILE="${EASYRSA_PKI}"/ca.crt
+OPENVPN_SERVER_TLS_AUTH_KEY=data/openvpn-tls-auth.key
+
+function fail {
+    echo "$1"
+    exit "${2-1}"
+}
+
+init-pki() {
+    easyrsa init-pki
+}
+
+build-ca() {
+    easyrsa build-ca
+}
+
+update-openvpn-server() {
+    rm -i "${EASYRSA_PKI}"/reqs/openvpn-server.req "${EASYRSA_PKI}"/private/openvpn-server.key
+	easyrsa build-server-full openvpn-server nopass
+	easyrsa gen-dh
+	nix-shell -p openvpn --run "openvpn --genkey secret $OPENVPN_SERVER_TLS_AUTH_KEY"
+}
+
+create-user() {
+	read -rp "username: " u || exit 1
+    easyrsa build-client-full client-"$u" nopass
+}
+
+remove-user() {
+	read -rp "username: " u || exit 1
+	rm -vf \
+        "${EASYRSA_PKI}"/issued/client-"$u".crt \
+		"${EASYRSA_PKI}"/private/client-"$u".key \
+		"${EASYRSA_PKI}"/reqs/client-"$u".req \
+		"${EASYRSA_PKI}"/inline/client-"$u".inline
+}
+
+list-users() {
+	{
+        find "${EASYRSA_PKI}"/issued  -name 'client-*' | sed -n 's/.*\/client-\(.*\).crt$/\1/p'
+        find "${EASYRSA_PKI}"/private -name 'client-*' | sed -n 's/.*\/client-\(.*\).key$/\1/p'
+        find "${EASYRSA_PKI}"/reqs    -name 'client-*' | sed -n 's/.*\/client-\(.*\).req$/\1/p'
+        find "${EASYRSA_PKI}"/inline  -name 'client-*' | sed -n 's/.*\/client-\(.*\).inline$/\1/p'
+	} | sort | uniq
+}
+
+gen-openvpn-profile() {
+	read -rp "username: " u || exit 1
+    local CLIENT_CERT_FILE="${EASYRSA_PKI}"/issued/client-"$u".crt
+    local CLIENT_KEY_FILE="${EASYRSA_PKI}"/private/client-"$u".key
+    [ -f "$CLIENT_CERT_FILE" ] || fail "client cert file not found: $CLIENT_CERT_FILE"
+    [ -f "${CLIENT_CERT_FILE}" ] || fail "client key file not found: $CLIENT_KEY_FILE"
+
+    cat <<EOF
+remote $(hostname -f) ${OPENVPN_SERVER_PORT:-1194} udp
+nobind
+dev tun
+persist-tun
+persist-key
+pull
+tls-client
+
+<ca>
+$(cat "${CA_CERT_FILE}")
+</ca>
+
+<cert>
+$(cat "${CLIENT_CERT_FILE}")
+</cert>
+
+<key>
+$(cat "${CLIENT_KEY_FILE}")
+</key>
+
+<tls-auth>
+$(cat "${OPENVPN_SERVER_TLS_AUTH_KEY}")
+</tls-auth>
+key-direction 1
+EOF
+}
+
+declare -f "$1" > /dev/null && $1 || echo "Unknown command: $1"
