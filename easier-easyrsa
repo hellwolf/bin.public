@@ -62,8 +62,6 @@ gen-openvpn-profile() {
 remote $(hostname -f) ${OPENVPN_SERVER_PORT:-1194} udp
 nobind
 dev tun
-persist-tun
-persist-key
 pull
 tls-client
 
