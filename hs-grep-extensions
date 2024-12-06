@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+
+PATH_SPEC=${1:-.}
+
+git grep -hP '^{-#\s+LANGUAGE.*#-}' -- "$PATH_SPEC" \
+    | sed -nE 's/\{-#\s+LANGUAGE\s+([^ ]+)\s+#-\}/\1/p' \
+    | tr "," "\n" \
+    | sort | uniq
